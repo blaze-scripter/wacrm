@@ -85,6 +85,7 @@ const nextConfig: NextConfig = {
     "*.ngrok.io",
     "*.trycloudflare.com",
     "*.loca.lt",
+    "*.ckindustries.org",
     ...(process.env.ALLOWED_DEV_ORIGINS
       ? process.env.ALLOWED_DEV_ORIGINS.split(",")
           .map((origin) => origin.trim())
