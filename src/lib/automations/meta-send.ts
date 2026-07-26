@@ -142,6 +142,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const accessToken = decrypt(config.access_token)
 
+  let templateRow: any = null
+  if (input.kind === 'template') {
+    const { data } = await db
+      .from('message_templates')
+      .select('*')
+      .eq('account_id', input.accountId)
+      .eq('name', input.templateName)
+      .eq('language', input.language || 'en_US')
+      .maybeSingle()
+    templateRow = data
+  }
+
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -151,6 +163,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         templateName: input.templateName,
         language: input.language,
         params: input.params,
+        template: templateRow || undefined,
       })
       return r.messageId
     }
