@@ -1,0 +1,23 @@
+name: Drain automation queue
+
+on:
+  schedule:
+    # Every 5 minutes (GitHub Actions minimum practical interval)
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Ping cron endpoint
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "x-cron-secret: ${{ secrets.AUTOMATION_CRON_SECRET }}" \
+            "https://crm.ckindustries.org/api/automations/cron")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" -ge 400 ]; then
+            echo "::error::Cron endpoint returned $STATUS"
+            exit 1
+          fi
