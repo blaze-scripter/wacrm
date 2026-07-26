@@ -49,7 +49,10 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  Download,
+  Tags,
 } from 'lucide-react';
+import { BulkTagsModal } from '@/components/contacts/bulk-tags-modal';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
@@ -93,6 +96,7 @@ export default function ContactsPage() {
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
 
   // All tags for display
   const [tagsMap, setTagsMap] = useState<Record<string, Tag>>({});
@@ -270,9 +274,103 @@ export default function ContactsPage() {
     setDeleteTarget(null);
   }
 
+
+  async function handleExportSelected() {
+    try {
+      const selectedIds = Array.from(selected);
+      if (selectedIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .select(`
+          *,
+          contact_tags(
+            tags(name)
+          )
+        `)
+        .in('id', selectedIds);
+
+      if (error) throw error;
+      if (!data || data.length === 0) return;
+
+      const headers = ['Name', 'Phone', 'Email', 'Company', 'Tags'];
+      const csvRows = [headers.join(',')];
+      
+      for (const row of data) {
+        const tagNames = (row.contact_tags as { tags?: { name: string } }[])
+          ?.map((ct) => ct.tags?.name)
+          .filter(Boolean)
+          .join('; ') || '';
+          
+        const escapeCsv = (str: string | null | undefined) => {
+          if (!str) return '""';
+          return `"${String(str).replace(/"/g, '""')}"`;
+        };
+        
+        csvRows.push([
+          escapeCsv(row.name),
+          escapeCsv(row.phone),
+          escapeCsv(row.email),
+          escapeCsv(row.company),
+          escapeCsv(tagNames)
+        ].join(','));
+      }
+      
+      const csvString = csvRows.join('\n');
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `contacts_export_${new Date().getTime()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Export downloaded successfully!');
+    } catch (err) {
+      toast.error('Failed to export CSV: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   const allOnPageSelected =
     contacts.length > 0 && contacts.every((c) => selected.has(c.id));
   const someOnPageSelected = contacts.some((c) => selected.has(c.id));
+
+  const [loadingAll, setLoadingAll] = useState(false);
+
+  async function handleSelectAllGlobal() {
+    setLoadingAll(true);
+    try {
+      const term = search.trim();
+      let allIds: string[] = [];
+      
+      if (selectedTagIds.length > 0) {
+        const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
+          p_tag_ids: selectedTagIds,
+          p_search: term || null,
+          p_limit: 100000,
+          p_offset: 0,
+        });
+        if (error) throw error;
+        allIds = (data || []).map((row: { contact: { id: string } }) => row.contact.id);
+      } else {
+        let query = supabase.from('contacts').select('id');
+        if (term) {
+          const like = `%${term}%`;
+          query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        allIds = (data || []).map((row: { id: string }) => row.id);
+      }
+      
+      setSelected(new Set(allIds));
+    } catch (err) {
+      toast.error('Failed to select all contacts: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoadingAll(false);
+    }
+  }
 
   function toggleSelectAll() {
     setSelected((prev) => {
@@ -312,6 +410,7 @@ export default function ContactsPage() {
 
     setDeleting(false);
     setBulkDeleteOpen(false);
+    setSelected(new Set());
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -500,30 +599,78 @@ export default function ContactsPage() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-4 py-2">
-          <p className="text-sm text-foreground">
-            {t('selectedCount', { count: selected.size })}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelected(new Set())}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {t('clearSelection')}
-            </Button>
-            <GatedButton
-              variant="destructive"
-              size="sm"
-              canAct={canEdit}
-              gateReason="delete contacts"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              {t('deleteSelected')}
-            </GatedButton>
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-semibold text-foreground">
+                {selected.size}
+              </span>
+              <span className="text-sm text-foreground font-medium">Records Selected.</span>
+              <button
+                onClick={() => setSelected(new Set())}
+                className="text-sm text-muted-foreground hover:text-foreground hover:underline ml-1"
+              >
+                Clear
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <GatedButton
+                variant="outline"
+                size="sm"
+                canAct={canEdit}
+                gateReason="send messages"
+                onClick={() => toast.info('Send Broadcast for selected contacts coming soon!')}
+                className="text-foreground border-border shrink-0"
+              >
+                Send Email
+              </GatedButton>
+
+              <GatedButton
+                variant="outline"
+                size="sm"
+                canAct={canEdit}
+                gateReason="assign tags"
+                onClick={() => setBulkTagsOpen(true)}
+                className="text-foreground border-border shrink-0"
+              >
+                Mass Update
+              </GatedButton>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger render={
+                  <Button variant="outline" size="sm" className="px-2 border-border text-muted-foreground">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                } />
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={handleExportSelected}>
+                    Export Contacts
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    className="text-destructive focus:bg-destructive/10 cursor-pointer"
+                    onClick={() => setBulkDeleteOpen(true)}
+                    disabled={!canEdit}
+                  >
+                    Mass Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
+          {allOnPageSelected && selected.size < totalCount && (
+            <div className="text-sm text-foreground bg-muted/30 px-3 py-2 rounded-md border border-border text-center">
+              All <strong>{contacts.length}</strong> contacts on this page are selected.{' '}
+              <button 
+                onClick={handleSelectAllGlobal}
+                disabled={loadingAll}
+                className="text-primary hover:underline font-medium ml-1"
+              >
+                {loadingAll ? 'Selecting...' : `Select all ${totalCount} contacts`}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -533,10 +680,11 @@ export default function ContactsPage() {
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="w-10">
-                <Checkbox
+                <input
+                  type="checkbox"
+                  className="size-4 cursor-pointer"
                   checked={allOnPageSelected}
-                  indeterminate={!allOnPageSelected && someOnPageSelected}
-                  onCheckedChange={toggleSelectAll}
+                  onChange={toggleSelectAll}
                   disabled={contacts.length === 0}
                   aria-label="Select all contacts on this page"
                 />
@@ -594,9 +742,11 @@ export default function ContactsPage() {
                   onClick={() => openDetail(contact.id)}
                 >
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
+                    <input
+                      type="checkbox"
+                      className="size-4 cursor-pointer"
                       checked={selected.has(contact.id)}
-                      onCheckedChange={() => toggleSelect(contact.id)}
+                      onChange={() => toggleSelect(contact.id)}
                       aria-label={`Select ${contact.name || contact.phone}`}
                     />
                   </TableCell>
@@ -827,6 +977,17 @@ export default function ContactsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Tags Modal */}
+      <BulkTagsModal
+        open={bulkTagsOpen}
+        onOpenChange={setBulkTagsOpen}
+        contactIds={Array.from(selected)}
+        onSaved={() => {
+          fetchContacts();
+          fetchTags();
+        }}
+      />
     </div>
   );
 }

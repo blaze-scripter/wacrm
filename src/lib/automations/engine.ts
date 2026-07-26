@@ -173,7 +173,7 @@ export async function resumePendingExecution(pending: {
 // Internal execution
 // ------------------------------------------------------------
 
-async function executeAutomation(automation: Automation, input: DispatchInput) {
+export async function executeAutomation(automation: Automation, input: DispatchInput) {
   const db = supabaseAdmin()
 
   const { data: log, error: logErr } = await db

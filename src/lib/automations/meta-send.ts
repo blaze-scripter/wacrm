@@ -142,7 +142,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const accessToken = decrypt(config.access_token)
 
-  let templateRow: any = null
+  let templateRow: Record<string, unknown> | null = null
   if (input.kind === 'template') {
     const { data } = await db
       .from('message_templates')

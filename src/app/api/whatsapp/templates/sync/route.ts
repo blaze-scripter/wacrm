@@ -36,6 +36,7 @@ interface MetaTemplateComponent {
   example?: {
     header_text?: string[]
     header_handle?: string[]
+    header_url?: string[]
     body_text?: string[][]
   }
 }
@@ -244,6 +245,7 @@ export async function POST() {
         header_type: headerType,
         header_content: header?.text ?? null,
         header_handle: header?.example?.header_handle?.[0] ?? null,
+        header_media_url: header?.example?.header_url?.[0] ?? null,
         body_text: body?.text ?? '',
         footer_text: footer?.text ?? null,
         buttons: parsedButtons.length ? parsedButtons : null,

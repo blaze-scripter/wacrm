@@ -472,6 +472,9 @@ export interface TimeBasedTriggerConfig {
   /** Cron expression or simple HH:mm string; engine can accept either. */
   schedule: string;
   timezone?: string;
+  target_tag_id?: string;
+  days_of_week?: number[];
+  time?: string;
 }
 
 export interface InteractiveReplyTriggerConfig {

@@ -54,6 +54,7 @@ import type {
   KeywordMatchTriggerConfig,
   MessageTemplate,
   Tag as TagRecord,
+  TimeBasedTriggerConfig,
 } from "@/types"
 import {
   InteractiveBuilder,
@@ -861,25 +862,140 @@ function TriggerCard({
               </div>
             )}
             {type === "time_based" && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  {t("schedule")}
-                </label>
-                <Input
-                  placeholder="Cron expression or HH:mm"
-                  value={(config.schedule as string) ?? ""}
-                  onChange={(e) =>
-                    onConfigChange({ ...config, schedule: e.target.value })
-                  }
-                  className="bg-muted text-foreground"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {t("scheduleHint")}
-                </p>
-              </div>
+              <TimeBasedTriggerUI 
+                config={config as unknown as TimeBasedTriggerConfig} 
+                onChange={onConfigChange} 
+                t={t} 
+              />
             )}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function TimeBasedTriggerUI({
+  config,
+  onChange,
+  t,
+}: {
+  config: TimeBasedTriggerConfig
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const days = config.days_of_week ?? []
+  const time = config.time ?? ""
+  
+  // Update timezone on mount if not set
+  useEffect(() => {
+    if (!config.timezone) {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      onChange({ ...config, timezone: tz })
+    }
+  }, [config, onChange])
+
+  const handleDayToggle = (dayIndex: number) => {
+    const newDays = days.includes(dayIndex)
+      ? days.filter(d => d !== dayIndex)
+      : [...days, dayIndex]
+    
+    updateSchedule(newDays, time)
+  }
+
+  const handleTimeChange = (newTime: string) => {
+    updateSchedule(days, newTime)
+  }
+
+  const updateSchedule = (newDays: number[], newTime: string) => {
+    let schedule = config.schedule
+    if (newTime) {
+      const [hour, minute] = newTime.split(':')
+      const daysStr = newDays.length > 0 ? newDays.join(',') : '*'
+      schedule = `${minute} ${hour} * * ${daysStr}`
+    }
+    onChange({ 
+      ...config, 
+      days_of_week: newDays, 
+      time: newTime,
+      schedule 
+    })
+  }
+
+  const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Target Tag (Optional)
+        </label>
+        <TagSelect
+          value={config.target_tag_id ?? ""}
+          onChange={(v) => onChange({ ...config, target_tag_id: v })}
+          t={t}
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Leave blank to send to all contacts.
+        </p>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Timezone
+        </label>
+        <select
+          value={config.timezone || ""}
+          onChange={(e) => onChange({ ...config, timezone: e.target.value })}
+          className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none mb-3"
+        >
+          <option value="UTC">UTC</option>
+          <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+          <option value="America/New_York">America/New_York (EST/EDT)</option>
+          <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+          <option value="America/Denver">America/Denver (MST/MDT)</option>
+          <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+          <option value="Europe/London">Europe/London (GMT/BST)</option>
+          <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+          <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+          <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+          <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+          <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+          {config.timezone && 
+           !["UTC", "Asia/Kolkata", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney"].includes(config.timezone) && (
+            <option value={config.timezone}>{config.timezone}</option>
+          )}
+        </select>
+        
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Time
+        </label>
+        <Input
+          type="time"
+          value={time}
+          onChange={(e) => handleTimeChange(e.target.value)}
+          className="bg-muted text-foreground"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Days of the Week
+        </label>
+        <div className="flex gap-2">
+          {dayLabels.map((label, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => handleDayToggle(i)}
+              className={`h-8 w-8 rounded-full text-xs font-medium transition-colors ${
+                days.includes(i)
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

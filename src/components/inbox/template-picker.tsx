@@ -27,6 +27,7 @@ import { useTranslations } from "next-intl";
 export interface TemplateSendValues {
   body: string[];
   headerText?: string;
+  headerMediaUrl?: string;
   buttonParams?: Record<number, string>;
 }
 
@@ -71,7 +72,8 @@ function collectVariableSlots(template: MessageTemplate): {
       urlButtonSlots.push({ index: i, text: b.text, url: b.url });
     }
   });
-  return { bodyVars, headerVarCount, urlButtonSlots };
+  const requiresMediaUrl = (template.header_type === 'image' || template.header_type === 'video' || template.header_type === 'document') && !template.header_media_url;
+  return { bodyVars, headerVarCount, urlButtonSlots, requiresMediaUrl };
 }
 
 export function TemplatePicker({
@@ -86,6 +88,7 @@ export function TemplatePicker({
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>("");
+  const [headerMediaUrl, setHeaderMediaUrl] = useState<string>("");
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -136,6 +139,7 @@ export function TemplatePicker({
     setSelected(null);
     setParams([]);
     setHeaderText("");
+    setHeaderMediaUrl("");
     setButtonParams({});
   }
 
@@ -149,7 +153,8 @@ export function TemplatePicker({
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
-      slots.urlButtonSlots.length === 0;
+      slots.urlButtonSlots.length === 0 &&
+      !slots.requiresMediaUrl;
     if (noInputsNeeded) {
       onSelect(template, { body: [] });
       handleOpenChange(false);
@@ -158,6 +163,7 @@ export function TemplatePicker({
     setSelected(template);
     setParams(new Array(slots.bodyVars.length).fill(""));
     setHeaderText("");
+    setHeaderMediaUrl("");
     setButtonParams({});
   }
 
@@ -165,6 +171,7 @@ export function TemplatePicker({
     if (!selected) return;
     const values: TemplateSendValues = { body: params };
     if (headerText.trim()) values.headerText = headerText.trim();
+    if (headerMediaUrl.trim()) values.headerMediaUrl = headerMediaUrl.trim();
     if (Object.keys(buttonParams).length > 0) {
       values.buttonParams = Object.fromEntries(
         Object.entries(buttonParams).map(([k, v]) => [Number(k), v.trim()]),
@@ -183,6 +190,7 @@ export function TemplatePicker({
     !!slots &&
     slots.bodyVars.every((_, i) => (params[i] ?? "").trim().length > 0) &&
     (slots.headerVarCount === 0 || headerText.trim().length > 0) &&
+    (!slots.requiresMediaUrl || headerMediaUrl.trim().length > 0) &&
     slots.urlButtonSlots.every(
       (s) => (buttonParams[s.index] ?? "").trim().length > 0,
     );
@@ -270,6 +278,19 @@ export function TemplatePicker({
                   value={headerText}
                   onChange={(e) => setHeaderText(e.target.value)}
                   placeholder={t("headerValuePlaceholder")}
+                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+            )}
+            {slots?.requiresMediaUrl && (
+              <div className="space-y-1">
+                <Label className="text-xs text-popover-foreground">
+                  Media URL (Required for {selected?.header_type} template)
+                </Label>
+                <Input
+                  value={headerMediaUrl}
+                  onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
                   className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                 />
               </div>

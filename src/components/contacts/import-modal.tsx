@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -18,6 +18,8 @@ import {
   type ContactTagAssignment,
 } from '@/lib/contacts/resolve-import-tags';
 import { cn } from '@/lib/utils';
+import type { Tag as AppTag } from '@/types';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -139,12 +141,30 @@ export function ImportModal({
     new Map()
   );
   const [importing, setImporting] = useState(false);
+  const [availableTags, setAvailableTags] = useState<AppTag[]>([]);
+  const [selectedGlobalTagNames, setSelectedGlobalTagNames] = useState<string[]>([]);
+  const [loadingTags, setLoadingTags] = useState(false);
   const [result, setResult] = useState<{
     imported: number;
     skipped: number;
     failed: number;
     tagsAssigned: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (open && accountId) {
+      setLoadingTags(true);
+      supabase
+        .from('tags')
+        .select('*')
+        .eq('account_id', accountId)
+        .order('name')
+        .then(({ data }) => {
+          if (data) setAvailableTags(data);
+          setLoadingTags(false);
+        });
+    }
+  }, [open, accountId, supabase]);
 
   function reset() {
     setFile(null);
@@ -153,6 +173,7 @@ export function ImportModal({
     setHasCompanyColumn(false);
     setTagColorByKey(new Map());
     setResult(null);
+    setSelectedGlobalTagNames([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -244,6 +265,9 @@ export function ImportModal({
         if (existing.has(normalizeKey(row.phone))) {
           skipped++;
           return false;
+        }
+        if (selectedGlobalTagNames.length > 0) {
+          row.tagNames = Array.from(new Set([...row.tagNames, ...selectedGlobalTagNames]));
         }
         return true;
       });
@@ -463,6 +487,51 @@ export function ImportModal({
             onChange={handleFileChange}
             className="hidden"
           />
+
+          {parsedRows.length > 0 && !result && (
+            <div className="space-y-2 mt-4 border-t border-border/80 pt-4">
+              <Label className="text-muted-foreground text-sm font-medium">Assign tags to all imported contacts</Label>
+              {loadingTags ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="size-3 animate-spin" />
+                  Loading tags...
+                </div>
+              ) : availableTags.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No tags available.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {availableTags.map((tag) => {
+                    const selected = selectedGlobalTagNames.includes(tag.name);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedGlobalTagNames(prev => 
+                            prev.includes(tag.name) ? prev.filter(n => n !== tag.name) : [...prev, tag.name]
+                          );
+                        }}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                          selected
+                            ? 'ring-2 ring-primary ring-offset-1 ring-offset-border'
+                            : 'opacity-60 hover:opacity-100'
+                        }`}
+                        style={{
+                          backgroundColor: tag.color + '20',
+                          color: tag.color,
+                          borderColor: tag.color,
+                        }}
+                      >
+                        {tag.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">

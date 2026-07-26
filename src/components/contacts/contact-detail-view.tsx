@@ -79,7 +79,6 @@ export function ContactDetailView({
   // Tags tab
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [contactTagIds, setContactTagIds] = useState<string[]>([]);
-  const [savingTags, setSavingTags] = useState(false);
 
   // Notes tab
   const [notes, setNotes] = useState<ContactNote[]>([]);
@@ -227,23 +226,32 @@ export function ContactDetailView({
 
   async function toggleTag(tagId: string) {
     if (!contactId) return;
-    setSavingTags(true);
 
+    // Optimistic update
     const isSelected = contactTagIds.includes(tagId);
+    
+    if (isSelected) {
+      setContactTagIds((prev) => prev.filter((id) => id !== tagId));
+    } else {
+      setContactTagIds((prev) => [...prev, tagId]);
+    }
 
     try {
       if (isSelected) {
         await deleteContactTag(contactId, tagId);
-        setContactTagIds((prev) => prev.filter((id) => id !== tagId));
       } else {
         await addContactTag(contactId, tagId);
-        setContactTagIds((prev) => [...prev, tagId]);
       }
       onUpdated();
     } catch (error) {
+      // Revert on failure
+      if (isSelected) {
+        setContactTagIds((prev) => [...prev, tagId]);
+      } else {
+        setContactTagIds((prev) => prev.filter((id) => id !== tagId));
+      }
       toast.error(error instanceof Error ? error.message : t('toastUpdateFailed'));
     }
-    setSavingTags(false);
   }
 
   async function addNote() {
@@ -555,7 +563,6 @@ export function ContactDetailView({
                           <button
                             key={tag.id}
                             onClick={() => toggleTag(tag.id)}
-                            disabled={savingTags}
                             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
                               selected
                                 ? 'ring-2 ring-primary ring-offset-1 ring-offset-border'
